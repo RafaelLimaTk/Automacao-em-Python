@@ -1,7 +1,7 @@
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, Reference
-from tkinter import filedialog
+from tkinter import filedialog, PhotoImage
 from zipfile import ZipFile
 
 import pandas as pd
@@ -109,17 +109,14 @@ def select_and_process_files():
             print(f"O arquivo {file_path} não é um arquivo .xlsx válido.")
             continue
 
-        # Criar uma pasta para cada arquivo
     for file_path in file_paths:
         folder_name = os.path.splitext(os.path.basename(file_path))[0]
         folder_path = os.path.join("Avaliações", folder_name)
         os.makedirs(folder_path, exist_ok=True)
 
-        # Processar o arquivo Excel e salvar na pasta
         process_excel_file(file_path, folder_path)
 
-    # Comprimir a pasta em um arquivo ZIP
-    global zip_file_path  # Tornando global para acessar na função download_zip_file
+    global zip_file_path
     zip_file_path = os.path.join("Avaliações", f"{folder_name}.zip")
     with ZipFile(zip_file_path, 'w') as zipf:
         for root, _, files in os.walk(folder_path):
@@ -129,14 +126,22 @@ def select_and_process_files():
     download_button.config(state=tk.NORMAL, command=lambda: download_zip_file(folder_name))
     return folder_name
 
-# Criar a interface Tkinter
 root = tk.Tk()
 root.title("Processador de Arquivos Excel")
+root.geometry("450x560+500+200")
+root.configure(bg="#f4fdfe")
+root.resizable(False,False)
 
-button = tk.Button(root, text="Selecionar Arquivos", command=select_and_process_files)
-button.pack()
+button_frame = tk.Frame(root)
+button_frame.pack(side=tk.TOP, pady=20)
+button_frame.configure(bg="#f4fdfe")
 
-download_button = tk.Button(root, text="Baixar ZIP", command=download_zip_file, state=tk.DISABLED)
-download_button.pack()
+img_select_file_button = tk.PhotoImage(file="img/btn_selecionar_arquivo.png")
+button = tk.Button(button_frame, image=img_select_file_button, command=select_and_process_files, borderwidth=0, highlightthickness=0, relief='flat')
+button.pack(side=tk.LEFT, padx=10)
+
+img_download_file_button = tk.PhotoImage(file="img/btn_baixar_zip.png")
+download_button = tk.Button(button_frame, image=img_download_file_button, command=download_zip_file, state=tk.DISABLED, borderwidth=0, highlightthickness=0, relief='flat')
+download_button.pack(side=tk.LEFT, padx=10)
 
 root.mainloop()
