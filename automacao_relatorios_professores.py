@@ -9,6 +9,8 @@ import tkinter as tk
 import os
 import shutil
 
+zip_file_paths = []
+
 class ProfessorEvaluation:
     def __init__(self, professor_name, question, evaluation_data, evaluation_data_value, weighted_average):
         self.professor_name = professor_name
@@ -91,40 +93,51 @@ def process_excel_file(input_file_path, folder_path):
         output_file_path = f"Avaliação_{professor_name.replace('/', '_').replace(' ', '_')}.xlsx"
         create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path)
 
-def download_zip_file(folder_name):
-    save_path = filedialog.asksaveasfilename(initialfile=f"{folder_name}.zip", defaultextension=".zip", filetypes=[("ZIP files", "*.zip")])
-    if not save_path:
+def download_zip_file():
+    save_directory = filedialog.askdirectory(title="Escolha o diretório onde os arquivos ZIP serão salvos")
+
+    if not save_directory:
         return
-    shutil.copy(zip_file_path, save_path)
+    
+    for zip_file_path in zip_file_paths:
+        folder_name = os.path.basename(zip_file_path).replace('.zip', '')
+        destination_path = os.path.join(save_directory, f"{folder_name}.zip")
+        shutil.copy(zip_file_path, destination_path)
 
 def select_and_process_files():
+    global zip_file_paths
+    zip_file_paths = []
+
     file_paths = filedialog.askopenfilenames(filetypes=[("Excel files", "*.xlsx")])
     if not file_paths:
         return
     
     os.makedirs("Avaliações", exist_ok=True)
+
+    # folder_names = []
     
     for file_path in file_paths:
         if not file_path.lower().endswith('.xlsx'):
             print(f"O arquivo {file_path} não é um arquivo .xlsx válido.")
             continue
 
-    for file_path in file_paths:
-        folder_name = os.path.splitext(os.path.basename(file_path))[0]
-        folder_path = os.path.join("Avaliações", folder_name)
+        current_folder_name = os.path.splitext(os.path.basename(file_path))[0]
+        folder_path = os.path.join("Avaliações", current_folder_name)
         os.makedirs(folder_path, exist_ok=True)
 
         process_excel_file(file_path, folder_path)
 
-    global zip_file_path
-    zip_file_path = os.path.join("Avaliações", f"{folder_name}.zip")
-    with ZipFile(zip_file_path, 'w') as zipf:
-        for root, _, files in os.walk(folder_path):
-            for file in files:
-                zipf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), folder_path))
+    # global zip_file_path
+        current_zip_file_path = os.path.join("Avaliações", f"{current_folder_name}.zip")
+        with ZipFile(current_zip_file_path, 'w') as zipf:
+            for root, _, files in os.walk(folder_path):
+                for file in files:
+                    zipf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), folder_path))
+
+        zip_file_paths.append(current_zip_file_path)
     
-    download_button.config(state=tk.NORMAL, command=lambda: download_zip_file(folder_name))
-    return folder_name
+    download_button.config(state=tk.NORMAL, command=lambda: download_zip_file())
+    # return folder_names
 
 root = tk.Tk()
 root.title("Processador de Arquivos Excel")
