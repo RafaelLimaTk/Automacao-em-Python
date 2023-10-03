@@ -1,9 +1,10 @@
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, Reference
-from tkinter import filedialog, PhotoImage
+from tkinter import filedialog, PhotoImage, ttk
 from zipfile import ZipFile
 
+import tkinter.messagebox as messagebox
 import pandas as pd
 import tkinter as tk
 import os
@@ -19,6 +20,37 @@ class ProfessorEvaluation:
         self.evaluation_data_value = evaluation_data_value
         self.weighted_average = weighted_average
 
+def log_error(message):
+    with open("error_log.txt", "a") as f:
+        f.write(message + "\n")
+
+def validate_dataframe(df, file_path):
+    if df.empty:
+        log_error(f"O arquivo {file_path} está vazio.")
+        return False
+    
+    found_categories = set(df.iloc[2].dropna())
+
+    EXPECTED_CATEGORIES = set(["Discordo totalmente", "Discordo", "Nem concordo nem discordo", 
+                           "Concordo", "Concordo totalmente", "Não se aplica / não sei responder", 
+                           "Total", "Weighted Average"])
+    
+    if EXPECTED_CATEGORIES != found_categories:
+        log_error(f"Categorias incompletas no arquivo {file_path}. Esperado: {EXPECTED_CATEGORIES}, Encontrado: {found_categories}")
+        return False
+    
+    return True
+
+def read_excel_file(input_file_path):
+    try:
+        df = pd.read_excel(input_file_path, header=None)
+        if not validate_dataframe(df, input_file_path):
+            return None
+        return df
+    except Exception as e:
+        log_error(f"Erro ao ler o arquivo {input_file_path}: {e}")
+        return None
+
 def create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path):
     wb = Workbook()
     ws = wb.active
@@ -31,12 +63,15 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         ws.append([f"Professor: {prof_eval.professor_name}"])
         ws.append([])
         ws.append(['Características de Avaliação', 'Porcentagem'])
-        ws.append(['Média ponderada', 'Média Ponderada ({})'.format(prof_eval.weighted_average)])
+        ws.append(['Média ponderada', f'Média Ponderada ({prof_eval.weighted_average})'])
 
-        for eval_char, percentage in prof_eval.evaluation_data.items():
-            corresponding_key = next((key for key, value in prof_eval.evaluation_data_value.items() if value == percentage), None)
-            if corresponding_key is not None:
-                ws.append([eval_char, corresponding_key])
+        ordered_eval_data_keys = list(prof_eval.evaluation_data.keys())
+        ordered_eval_data_values = [prof_eval.evaluation_data_value[i] for i in sorted(prof_eval.evaluation_data_value.keys())]
+
+        for row_idx, (eval_char, eval_value) in enumerate(zip(ordered_eval_data_keys, ordered_eval_data_values), start=6):
+            ws.append([eval_char, eval_value])
+            if eval_char != 'Total':
+                ws.cell(row=row_idx, column=2).number_format = '0.00%'
 
         chart = BarChart()
         chart.title = prof_eval.question
@@ -46,8 +81,8 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         chart.width = 25
         chart.height = 12
 
-        data = Reference(ws, min_col=2, min_row=5, max_row=3 + len(prof_eval.evaluation_data), max_col=2)
-        cats = Reference(ws, min_col=1, min_row=6, max_row=5 + len(prof_eval.evaluation_data))
+        data = Reference(ws, min_col=2, min_row=5, max_row=4 + len(prof_eval.evaluation_data), max_col=2)
+        cats = Reference(ws, min_col=1, min_row=6, max_row=6 + len(prof_eval.evaluation_data))
 
         chart.add_data(data, titles_from_data=True)
         chart.set_categories(cats)
@@ -58,29 +93,34 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
     wb.save(save_path)
 
 def process_excel_file(input_file_path, folder_path):
-    df = pd.read_excel(input_file_path, header=None)
+    df = read_excel_file(input_file_path)
+    if df is None:
+        return
+    
     question_rows = df[df.iloc[:, 0].str.contains("Q[0-9]+", na=False, regex=True)].index.tolist()
     all_professors_data = {}
-
+    
     for i in range(len(question_rows) - 1):
         start_row = question_rows[i]
         end_row = question_rows[i + 1] if i < len(question_rows) - 1 else len(df)
 
         question = df.iloc[start_row, 0]
-
         evaluation_characteristics = df.iloc[start_row + 1, 1::2].dropna()
-        evaluation_characteristics_value = df.iloc[start_row + 2, 1::2].dropna()
-        evaluation_characteristics_value[evaluation_characteristics_value.index <= 11] *= 100
 
         professor_data = df.iloc[start_row + 2 : end_row].dropna(subset=[df.columns[0]])
-        professor_data = professor_data.iloc[:, ::2]
+        professor_data = professor_data.iloc[:, ::1]
         
         eval_chars_list = evaluation_characteristics.tolist()
-        eval_value_list = evaluation_characteristics_value.tolist()
+        odd_indices = list(range(1, len(professor_data.columns), 2))
         for index, row in professor_data.iterrows():
             professor_name = row.iloc[0]
             evaluation_data = {eval_chars_list[i]: row.iloc[i+1] for i in range(len(eval_chars_list))}
-            evaluation_data_value = {eval_value_list[i]: row.iloc[i+1] for i in range(len(eval_value_list))}
+            evaluation_data_value = {professor_data.columns[i]: row.iloc[i] for i in odd_indices}
+
+            ordered_values = [evaluation_data_value[i] for i in sorted(evaluation_data_value.keys())]
+            for i, key in enumerate(evaluation_data.keys()):
+                evaluation_data[key] = ordered_values[i]
+
             weighted_average = row.iloc[-1]      
             prof_eval = ProfessorEvaluation(professor_name, question, evaluation_data, evaluation_data_value, weighted_average)
             
@@ -95,27 +135,34 @@ def process_excel_file(input_file_path, folder_path):
 
 def download_zip_file():
     save_directory = filedialog.askdirectory(title="Escolha o diretório onde os arquivos ZIP serão salvos")
-
     if not save_directory:
         return
-    
     for zip_file_path in zip_file_paths:
         folder_name = os.path.basename(zip_file_path).replace('.zip', '')
         destination_path = os.path.join(save_directory, f"{folder_name}.zip")
         shutil.copy(zip_file_path, destination_path)
 
+        os.remove(zip_file_path)
+    
+    zip_file_paths.clear()
+    download_button.config(state=tk.DISABLED)
+    progressbar['value'] = 0
+    messagebox.showinfo("Sucesso", "Os arquivos ZIP foram salvos com sucesso.")
+
 def select_and_process_files():
+    global root
     global zip_file_paths
     zip_file_paths = []
 
     file_paths = filedialog.askopenfilenames(filetypes=[("Excel files", "*.xlsx")])
     if not file_paths:
         return
-    
+
+    total_files = len(file_paths)
+    processed_files = 0
+
     os.makedirs("Avaliações", exist_ok=True)
 
-    # folder_names = []
-    
     for file_path in file_paths:
         if not file_path.lower().endswith('.xlsx'):
             print(f"O arquivo {file_path} não é um arquivo .xlsx válido.")
@@ -127,21 +174,34 @@ def select_and_process_files():
 
         process_excel_file(file_path, folder_path)
 
-    # global zip_file_path
         current_zip_file_path = os.path.join("Avaliações", f"{current_folder_name}.zip")
         with ZipFile(current_zip_file_path, 'w') as zipf:
-            for root, _, files in os.walk(folder_path):
+            for folder_root, _, files in os.walk(folder_path):
                 for file in files:
-                    zipf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), folder_path))
+                    zipf.write(os.path.join(folder_root, file), os.path.relpath(os.path.join(folder_root, file), folder_path))
 
         zip_file_paths.append(current_zip_file_path)
+
+        processed_files += 1
+        progress = (processed_files / total_files) * 100
+        progressbar['value'] = progress
+        root.update_idletasks()
     
     download_button.config(state=tk.NORMAL, command=lambda: download_zip_file())
-    # return folder_names
 
 root = tk.Tk()
 root.title("Processador de Arquivos Excel")
-root.geometry("450x560+500+200")
+
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+window_width = 450
+window_height = 560
+
+position_x = int((screen_width / 2) - (window_width / 2))
+position_y = int((screen_height / 2) - (window_height / 2))
+
+root.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
 root.configure(bg="#f4fdfe")
 root.resizable(False,False)
 
@@ -156,5 +216,8 @@ button.pack(side=tk.LEFT, padx=10)
 img_download_file_button = tk.PhotoImage(file="img/btn_baixar_zip.png")
 download_button = tk.Button(button_frame, image=img_download_file_button, command=download_zip_file, state=tk.DISABLED, borderwidth=0, highlightthickness=0, relief='flat')
 download_button.pack(side=tk.LEFT, padx=10)
+
+progressbar = ttk.Progressbar(root, orient='horizontal', length=300, mode='determinate')
+progressbar.pack(pady=20)
 
 root.mainloop()
