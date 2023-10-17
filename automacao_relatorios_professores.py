@@ -3,12 +3,14 @@ from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, Reference
 from tkinter import filedialog, PhotoImage, ttk
 from zipfile import ZipFile
+from PIL import Image, ImageTk
 
 import tkinter.messagebox as messagebox
 import pandas as pd
 import tkinter as tk
 import os
 import shutil
+import re
 
 zip_file_paths = []
 
@@ -51,13 +53,26 @@ def read_excel_file(input_file_path):
         log_error(f"Erro ao ler o arquivo {input_file_path}: {e}")
         return None
 
-def create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path):
+def create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path, filename):
+
+    year, period = extract_year_and_period(filename)
+
+    append_str = ""
+    if year and period:
+        append_str = f"_{year}_{period}"
+    elif year:
+        append_str = f"_{year}"
+    elif period:
+        append_str = f"_{period}"
+
     wb = Workbook()
     ws = wb.active
 
     for idx, prof_eval in enumerate(professor_evaluation_list):
         if idx > 0:
             ws = wb.create_sheet(title=f"Q{idx+1}")
+
+        output_file_path = f"Avaliação_{prof_eval.professor_name.replace('/', '_').replace(' ', '_')}{append_str}.xlsx"
 
         ws.append([f"QUestão: {prof_eval.question}"])
         ws.append([f"Professor: {prof_eval.professor_name}"])
@@ -97,6 +112,8 @@ def process_excel_file(input_file_path, folder_path):
     if df is None:
         return
     
+    filename = os.path.basename(input_file_path)
+    
     question_rows = df[df.iloc[:, 0].str.contains("Q[0-9]+", na=False, regex=True)].index.tolist()
     all_professors_data = {}
     
@@ -131,7 +148,7 @@ def process_excel_file(input_file_path, folder_path):
 
     for professor_name, professor_evaluation_list in all_professors_data.items():
         output_file_path = f"Avaliação_{professor_name.replace('/', '_').replace(' ', '_')}.xlsx"
-        create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path)
+        create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path, filename)
 
 def download_zip_file():
     save_directory = filedialog.askdirectory(title="Escolha o diretório onde os arquivos ZIP serão salvos")
@@ -143,6 +160,7 @@ def download_zip_file():
         shutil.copy(zip_file_path, destination_path)
 
         os.remove(zip_file_path)
+        shutil.rmtree(os.path.join('Avaliações', folder_name))
     
     zip_file_paths.clear()
     download_button.config(state=tk.DISABLED)
@@ -189,6 +207,24 @@ def select_and_process_files():
     
     download_button.config(state=tk.NORMAL, command=lambda: download_zip_file())
 
+def extract_year_and_period(filename):
+    match = re.search(r'(\d{4}\.\d)\s.*?(\d\s+PERÍODO)', filename)
+    year = period = None
+
+    if match:
+        year, period = match.groups()
+    else:
+        year_match = re.search(r'(\d{4}\.\d)', filename)
+        period_match = re.search(r'(\d\s+PERÍODO)', filename)
+
+        if year_match:
+            year = year_match.group(1)
+        
+        if period_match:
+            period = period_match.group(1)
+
+    return year, period
+
 root = tk.Tk()
 root.title("Processador de Arquivos Excel")
 
@@ -217,7 +253,18 @@ img_download_file_button = tk.PhotoImage(file="img/btn_baixar_zip.png")
 download_button = tk.Button(button_frame, image=img_download_file_button, command=download_zip_file, state=tk.DISABLED, borderwidth=0, highlightthickness=0, relief='flat')
 download_button.pack(side=tk.LEFT, padx=10)
 
-progressbar = ttk.Progressbar(root, orient='horizontal', length=300, mode='determinate')
+progressbar = ttk.Progressbar(root, orient='horizontal', length=420, mode='determinate')
 progressbar.pack(pady=20)
+
+blue_frame = tk.Frame(root, bg='#0095F3', height=100)
+blue_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+image_path = "img/FADBA UNIAENE.png"
+image = Image.open(image_path)
+image = image.resize((160, 60))
+photo = ImageTk.PhotoImage(image)
+
+image_label = tk.Label(blue_frame, image=photo, bg='#0095F3')
+image_label.pack(side=tk.TOP, pady=5, padx=5) 
 
 root.mainloop()
