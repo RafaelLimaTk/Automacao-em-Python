@@ -5,6 +5,10 @@ from tkinter import filedialog, PhotoImage, ttk
 from zipfile import ZipFile
 from PIL import Image, ImageTk
 
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.chart import BarChart, Reference
+
 import tkinter.messagebox as messagebox
 import pandas as pd
 import tkinter as tk
@@ -49,6 +53,12 @@ def read_excel_file(input_file_path):
         if not validate_dataframe(df, input_file_path):
             return None
         return df
+    except FileNotFoundError:
+        log_error(f"O arquivo {input_file_path} não foi encontrado.")
+        return None
+    except PermissionError:
+        log_error(f"Permissão negada ao tentar acessar o arquivo {input_file_path}.")
+        return None
     except Exception as e:
         log_error(f"Erro ao ler o arquivo {input_file_path}: {e}")
         return None
@@ -72,7 +82,7 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         if idx > 0:
             ws = wb.create_sheet(title=f"Q{idx+1}")
 
-        output_file_path = f"Avaliação_{prof_eval.professor_name.replace('/', '_').replace(' ', '_')}{append_str}.xlsx"
+        output_file_path = f"Avaliação_{format_filename(prof_eval.professor_name)}{append_str}.xlsx"
 
         ws.append([f"QUestão: {prof_eval.question}"])
         ws.append([f"Professor: {prof_eval.professor_name}"])
@@ -104,12 +114,23 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
 
         ws.add_chart(chart, f"H{1 + len(prof_eval.evaluation_data)}")
 
-    save_path = os.path.join(folder_path, output_file_path)
-    wb.save(save_path)
+    try:
+        save_path = os.path.join(folder_path, output_file_path)
+        wb.save(save_path)
+
+        df = pd.read_excel(save_path)
+
+        return True
+    
+    except PermissionError:
+        log_error(f"Permissão negada ao tentar salvar o arquivo {output_file_path}.")
+    except Exception as e:
+        log_error(f"Erro ao salvar o arquivo {output_file_path}: {e}")
 
 def process_excel_file(input_file_path, folder_path):
     df = read_excel_file(input_file_path)
     if df is None:
+        log_error(f"Não foi possível processar o arquivo {input_file_path}.")
         return
     
     filename = os.path.basename(input_file_path)
@@ -131,6 +152,9 @@ def process_excel_file(input_file_path, folder_path):
         odd_indices = list(range(1, len(professor_data.columns), 2))
         for index, row in professor_data.iterrows():
             professor_name = row.iloc[0]
+            if not professor_name or professor_name.strip() == "":
+                log_error(f"Nome do professor ausente ou inválido no arquivo {input_file_path} na linha {index + 1}.")
+                continue
             evaluation_data = {eval_chars_list[i]: row.iloc[i+1] for i in range(len(eval_chars_list))}
             evaluation_data_value = {professor_data.columns[i]: row.iloc[i] for i in odd_indices}
 
@@ -157,7 +181,14 @@ def download_zip_file():
     for zip_file_path in zip_file_paths:
         folder_name = os.path.basename(zip_file_path).replace('.zip', '')
         destination_path = os.path.join(save_directory, f"{folder_name}.zip")
-        shutil.copy(zip_file_path, destination_path)
+        try:
+            shutil.copy(zip_file_path, destination_path)
+        except FileNotFoundError:
+            log_error(f"O arquivo ZIP {zip_file_path} não foi encontrado.")
+        except PermissionError:
+            log_error(f"Permissão negada ao tentar copiar o arquivo ZIP {zip_file_path} para {destination_path}.")
+        except Exception as e:
+            log_error(f"Erro ao copiar o arquivo ZIP {zip_file_path}: {e}")
 
         os.remove(zip_file_path)
         shutil.rmtree(os.path.join('Avaliações', folder_name))
@@ -224,6 +255,17 @@ def extract_year_and_period(filename):
             period = period_match.group(1)
 
     return year, period
+
+def format_filename(filename):
+    invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+    
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    
+    filename = '_'.join(filename.split())
+    
+    return filename
+
 
 root = tk.Tk()
 root.title("Processador de Arquivos Excel")
