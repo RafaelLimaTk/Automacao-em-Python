@@ -19,8 +19,6 @@ import win32com.client
 import gc
 
 zip_file_paths = []
-progress = 0
-increment_value = 0
 
 class ProfessorEvaluation:
     def __init__(self, professor_name, question, evaluation_data, evaluation_data_value, weighted_average):
@@ -107,7 +105,7 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         chart.x_axis.title = prof_eval.professor_name
         chart.y_axis.title = "Porcentagem"
 
-        chart.width = 25
+        chart.width = 16
         chart.height = 12
 
         data = Reference(ws, min_col=2, min_row=5, max_row=4 + len(prof_eval.evaluation_data), max_col=2)
@@ -116,12 +114,11 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         chart.add_data(data, titles_from_data=True)
         chart.set_categories(cats)
 
-        ws.add_chart(chart, f"H{1 + len(prof_eval.evaluation_data)}")
+        ws.add_chart(chart, f"A{6 + len(prof_eval.evaluation_data)}")
 
     try:
         save_path = os.path.join(folder_path, output_file_path)
         wb.save(save_path)
-        update_progressbar(increment_value)
 
         df = pd.read_excel(save_path)
 
@@ -142,6 +139,7 @@ def batch_excel_to_pdf(conversions):
     excel = win32com.client.Dispatch("Excel.Application")
     excel.Visible = False
     excel.DisplayAlerts = False
+    excel.ScreenUpdating = False
     
     try:
         for input_file, output_file in conversions:
@@ -156,10 +154,7 @@ def batch_excel_to_pdf(conversions):
 
             workbook.ActiveSheet.ExportAsFixedFormat(0, output_file)
             workbook.Close(True)
-            update_progressbar(increment_value)
-            
-        print("Todas as conversões foram bem-sucedidas.")
-        
+
     except Exception as e:
         print(f"Erro na conversão: {e}")
         
@@ -240,8 +235,6 @@ def download_zip_file():
     messagebox.showinfo("Sucesso", "Os arquivos ZIP foram salvos com sucesso.")
 
 def select_and_process_files():
-    global progress
-    global increment_value
     global root
     global zip_file_paths
     zip_file_paths = []
@@ -250,8 +243,8 @@ def select_and_process_files():
     if not file_paths:
         return
 
-    total_files = len(file_paths) * 2
-    increment_value = 100 / total_files
+    total_files = len(file_paths)
+    processed_files = 0
 
     os.makedirs("Avaliações", exist_ok=True)
 
@@ -274,9 +267,9 @@ def select_and_process_files():
 
         zip_file_paths.append(current_zip_file_path)
 
-        progress = 0
+        processed_files += 1
+        progress = (processed_files / total_files) * 100
         progressbar['value'] = progress
-
         root.update_idletasks()
     
     download_button.config(state=tk.NORMAL, command=lambda: download_zip_file())
@@ -308,13 +301,6 @@ def format_filename(filename):
     filename = '_'.join(filename.split())
     
     return filename
-
-def update_progressbar(increment_value):
-    global progress 
-    progress += increment_value
-    progressbar['value'] = progress
-    root.update_idletasks()
-
 
 root = tk.Tk()
 root.title("Processador de Arquivos Excel")
