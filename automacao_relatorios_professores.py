@@ -19,6 +19,8 @@ import win32com.client
 import gc
 
 zip_file_paths = []
+progress = 0
+increment_value = 0
 
 class ProfessorEvaluation:
     def __init__(self, professor_name, question, evaluation_data, evaluation_data_value, weighted_average):
@@ -119,6 +121,7 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
     try:
         save_path = os.path.join(folder_path, output_file_path)
         wb.save(save_path)
+        update_progressbar(increment_value)
 
         df = pd.read_excel(save_path)
 
@@ -128,47 +131,42 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
 
         conversions = [(save_path_absolute, pdf_output_file_path_absolute)]
 
-        excel = win32com.client.Dispatch("Excel.Application")
-        try:
-            for input_file, output_file in conversions:
-                excel_to_pdf(excel, input_file, output_file)
-        finally:
-            excel.Quit()
-
-        return True
+        batch_excel_to_pdf(conversions)
     
     except PermissionError:
         log_error(f"Permissão negada ao tentar salvar o arquivo {output_file_path}.")
     except Exception as e:
         log_error(f"Erro ao salvar o arquivo {output_file_path}: {e}")
 
-def excel_to_pdf(excel, input_file, output_file):
-    if not os.path.exists(input_file):
-        print(f"O arquivo {input_file} não existe.")
-        return
-
-    workbook = None
+def batch_excel_to_pdf(conversions):
+    excel = win32com.client.Dispatch("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    
     try:
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        excel.ScreenUpdating = False
+        for input_file, output_file in conversions:
+            if not os.path.exists(input_file):
+                print(f"O arquivo {input_file} não existe.")
+                continue
+            
+            workbook = excel.Workbooks.Open(input_file)
+            
+            ws_index_list = list(range(1, workbook.Worksheets.Count + 1))
+            workbook.Worksheets(ws_index_list).Select()
 
-        workbook = excel.Workbooks.Open(input_file)
-        
-        ws_index_list = list(range(1, workbook.Worksheets.Count + 1))
-        workbook.Worksheets(ws_index_list).Select()
-
-        workbook.ActiveSheet.ExportAsFixedFormat(0, output_file)
-        
-        workbook.Close(True)
-        
-        print("Conversão bem-sucedida.")
+            workbook.ActiveSheet.ExportAsFixedFormat(0, output_file)
+            workbook.Close(True)
+            update_progressbar(increment_value)
+            
+        print("Todas as conversões foram bem-sucedidas.")
         
     except Exception as e:
         print(f"Erro na conversão: {e}")
+        
     finally:
-        if workbook:
-            workbook.Close(True)
+        excel.Quit()
+        del excel
+        gc.collect()
 
 def process_excel_file(input_file_path, folder_path):
     df = read_excel_file(input_file_path)
@@ -242,6 +240,8 @@ def download_zip_file():
     messagebox.showinfo("Sucesso", "Os arquivos ZIP foram salvos com sucesso.")
 
 def select_and_process_files():
+    global progress
+    global increment_value
     global root
     global zip_file_paths
     zip_file_paths = []
@@ -250,8 +250,8 @@ def select_and_process_files():
     if not file_paths:
         return
 
-    total_files = len(file_paths)
-    processed_files = 0
+    total_files = len(file_paths) * 2
+    increment_value = 100 / total_files
 
     os.makedirs("Avaliações", exist_ok=True)
 
@@ -274,9 +274,9 @@ def select_and_process_files():
 
         zip_file_paths.append(current_zip_file_path)
 
-        processed_files += 1
-        progress = (processed_files / total_files) * 100
+        progress = 0
         progressbar['value'] = progress
+
         root.update_idletasks()
     
     download_button.config(state=tk.NORMAL, command=lambda: download_zip_file())
@@ -308,6 +308,12 @@ def format_filename(filename):
     filename = '_'.join(filename.split())
     
     return filename
+
+def update_progressbar(increment_value):
+    global progress 
+    progress += increment_value
+    progressbar['value'] = progress
+    root.update_idletasks()
 
 
 root = tk.Tk()
