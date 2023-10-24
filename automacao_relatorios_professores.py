@@ -67,15 +67,15 @@ def read_excel_file(input_file_path):
 
 def create_excel_report_for_professor(professor_evaluation_list, output_file_path, folder_path, filename):
 
-    year, period = extract_year_and_period(filename)
-
+    year, period, course = extract_year_and_period(filename)
+    
     append_str = ""
-    if year and period:
-        append_str = f"_{year}_{period}"
-    elif year:
-        append_str = f"_{year}"
-    elif period:
-        append_str = f"_{period}"
+    if course:
+        append_str += f"_{course}"
+    if year:
+        append_str += f"_{year}"
+    if period:
+        append_str += f"_{period}"
 
     wb = Workbook()
     ws = wb.active
@@ -276,7 +276,7 @@ def select_and_process_files():
 
 def extract_year_and_period(filename):
     match = re.search(r'(\d{4}\.\d)\s.*?(\d\s+PERÍODO)', filename)
-    year = period = None
+    year = period = course = None
 
     if match:
         year, period = match.groups()
@@ -289,8 +289,12 @@ def extract_year_and_period(filename):
         
         if period_match:
             period = period_match.group(1)
+    
+    course_match = re.search(r'-\s(.+?)\s-', filename)
+    if course_match:
+        course = course_match.group(1)
 
-    return year, period
+    return year, period, course
 
 def format_filename(filename):
     invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
