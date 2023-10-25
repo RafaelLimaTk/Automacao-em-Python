@@ -1,6 +1,4 @@
-from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
-from openpyxl.chart import BarChart, Reference
 from tkinter import filedialog, PhotoImage, ttk
 from zipfile import ZipFile
 from PIL import Image, ImageTk
@@ -8,6 +6,8 @@ from PIL import Image, ImageTk
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.chart import BarChart, Reference
+from openpyxl.styles import PatternFill, Font, Color, Alignment
+from textwrap import wrap
 
 import tkinter.messagebox as messagebox
 import pandas as pd
@@ -85,17 +85,21 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
             ws = wb.create_sheet(title=f"Q{idx+1}")
 
         output_file_path = f"Avaliação_{format_filename(prof_eval.professor_name)}{append_str}.xlsx"
-
-        ws.append([f"QUestão: {prof_eval.question}"])
-        ws.append([f"Professor: {prof_eval.professor_name}"])
+        
+        
+        formatted_question = format_question(prof_eval.question)
+        ws.append([f"Avaliação Docente {year} {course} | {period} | {prof_eval.professor_name}"])
         ws.append([])
+        ws.append(['Média Geral do Professor/Preceptor'])
+        ws.append([])
+        ws.append([f"Questão: {formatted_question}"])
         ws.append(['Características de Avaliação', 'Porcentagem'])
         ws.append(['Média ponderada', f'Média Ponderada ({prof_eval.weighted_average})'])
 
         ordered_eval_data_keys = list(prof_eval.evaluation_data.keys())
         ordered_eval_data_values = [prof_eval.evaluation_data_value[i] for i in sorted(prof_eval.evaluation_data_value.keys())]
 
-        for row_idx, (eval_char, eval_value) in enumerate(zip(ordered_eval_data_keys, ordered_eval_data_values), start=6):
+        for row_idx, (eval_char, eval_value) in enumerate(zip(ordered_eval_data_keys, ordered_eval_data_values), start=8):
             ws.append([eval_char, eval_value])
             if eval_char != 'Total':
                 ws.cell(row=row_idx, column=2).number_format = '0.00%'
@@ -105,16 +109,43 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         chart.x_axis.title = prof_eval.professor_name
         chart.y_axis.title = "Porcentagem"
 
-        chart.width = 16
-        chart.height = 12
+        chart.width = 23
+        chart.height = 10
 
-        data = Reference(ws, min_col=2, min_row=5, max_row=4 + len(prof_eval.evaluation_data), max_col=2)
-        cats = Reference(ws, min_col=1, min_row=6, max_row=6 + len(prof_eval.evaluation_data))
+        data = Reference(ws, min_col=2, min_row=7, max_row=6 + len(prof_eval.evaluation_data), max_col=2)
+        cats = Reference(ws, min_col=1, min_row=8, max_row=8 + len(prof_eval.evaluation_data))
 
         chart.add_data(data, titles_from_data=True)
         chart.set_categories(cats)
 
-        ws.add_chart(chart, f"A{6 + len(prof_eval.evaluation_data)}")
+        #config de layout
+        fill = PatternFill(start_color="E6E6E6", end_color="E6E6E6", fill_type="solid")
+        noyan_font = Font(name='Noyan Slim', size=12)
+
+        azul_instituicao = Color(rgb="2D4A62")
+        fonte_azul = Font(name='Noyan Slim', size=13, color=azul_instituicao)
+
+        for row in ws['A1:C14']:
+            for cell in row:
+                cell.font = noyan_font
+
+        ws['A6'].fill = fill
+        ws['B6'].fill = fill
+        ws['A3'].fill = fill
+        ws['B3'].fill = fill
+        ws['A6'].font = fonte_azul
+        ws['B6'].font = fonte_azul
+        ws['A3'].font = fonte_azul
+
+        # adjust_column_width_based_on_cell(ws, 'A', 11)
+        adjust_column_width_based_on_cell(ws, 'B', 7)
+        # adjust_column_width_based_on_cell(ws, 'A', 3)
+        ws.column_dimensions['A'].width = 90
+        adjust_cell_for_wrapped_text(ws, 'A5')
+        #fim da config de layout
+
+        ws['B3'] = get_general_weighted_average(professor_evaluation_list)
+        ws.add_chart(chart, f"A{8 + len(prof_eval.evaluation_data)}")
 
     try:
         save_path = os.path.join(folder_path, output_file_path)
@@ -128,19 +159,24 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
 
         conversions = [(save_path_absolute, pdf_output_file_path_absolute)]
 
-        batch_excel_to_pdf(conversions)
+        batch_excel_to_pdf(conversions, orientation="Landscape")
     
     except PermissionError:
         log_error(f"Permissão negada ao tentar salvar o arquivo {output_file_path}.")
     except Exception as e:
         log_error(f"Erro ao salvar o arquivo {output_file_path}: {e}")
 
-def batch_excel_to_pdf(conversions):
+def batch_excel_to_pdf(conversions, orientation="Portrait"):
     excel = win32com.client.Dispatch("Excel.Application")
     excel.Visible = False
     excel.DisplayAlerts = False
     excel.ScreenUpdating = False
     
+    if orientation == "Landscape":
+        orientation_const = 2
+    else:
+        orientation_const = 1
+
     try:
         for input_file, output_file in conversions:
             if not os.path.exists(input_file):
@@ -148,10 +184,18 @@ def batch_excel_to_pdf(conversions):
                 continue
             
             workbook = excel.Workbooks.Open(input_file)
-            
             ws_index_list = list(range(1, workbook.Worksheets.Count + 1))
-            workbook.Worksheets(ws_index_list).Select()
+            
+            for ws_index in ws_index_list:
+                ws = workbook.Worksheets(ws_index)
+                ws.PageSetup.Orientation = orientation_const
 
+                ws.PageSetup.LeftMargin = 24 
+                ws.PageSetup.RightMargin = 24
+                ws.PageSetup.TopMargin = 24
+                ws.PageSetup.BottomMargin = 24
+            
+            workbook.Worksheets(ws_index_list).Select()
             workbook.ActiveSheet.ExportAsFixedFormat(0, output_file)
             workbook.Close(True)
 
@@ -162,6 +206,32 @@ def batch_excel_to_pdf(conversions):
         excel.Quit()
         del excel
         gc.collect()
+
+def adjust_column_width_based_on_cell(ws, column_letter, row_number):
+    cell_value = ws[f"{column_letter}{row_number}"].value
+    if cell_value:
+        cell_length = len(str(cell_value))
+        adjusted_width = cell_length + 2 
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+def get_general_weighted_average(prof_evaluations):
+    total_weighted_average = 0
+    num_questions = len(prof_evaluations)
+    
+    for eval in prof_evaluations:
+        total_weighted_average += eval.weighted_average
+
+    return str(round(total_weighted_average / num_questions, 2))
+
+def format_question(question, max_length=70):
+    question = question.replace("Q12.", "").strip()
+    wrapped_text = wrap(question, max_length)
+    return '\n'.join(wrapped_text)
+
+def adjust_cell_for_wrapped_text(ws, cell_address):
+    cell = ws[cell_address]
+    cell.alignment = Alignment(wrap_text=True)
+    ws.row_dimensions[cell.row].height = 15 * len(cell.value.split('\n'))
 
 def process_excel_file(input_file_path, folder_path):
     df = read_excel_file(input_file_path)
