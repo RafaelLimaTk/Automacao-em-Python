@@ -39,9 +39,8 @@ def validate_dataframe(df, file_path):
     
     found_categories = set(df.iloc[2].dropna())
 
-    EXPECTED_CATEGORIES = set(["Discordo totalmente", "Discordo", "Nem concordo nem discordo", 
-                           "Concordo", "Concordo totalmente", "Não se aplica / não sei responder", 
-                           "Total", "Weighted Average"])
+    EXPECTED_CATEGORIES = set(["Não satisfaz", "Satisfaz parcialmente", "Satisfaz", 
+                           "Supera as expectativas", "Total", "Weighted Average"])
     
     if EXPECTED_CATEGORIES != found_categories:
         log_error(f"Categorias incompletas no arquivo {file_path}. Esperado: {EXPECTED_CATEGORIES}, Encontrado: {found_categories}")
@@ -165,7 +164,7 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         log_error(f"Permissão negada ao tentar salvar o arquivo {output_file_path}.")
     except Exception as e:
         log_error(f"Erro ao salvar o arquivo {output_file_path}: {e}")
-
+    
 def batch_excel_to_pdf(conversions, orientation="Portrait"):
     excel = win32com.client.Dispatch("Excel.Application")
     excel.Visible = False
