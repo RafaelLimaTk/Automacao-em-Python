@@ -117,7 +117,6 @@ def create_excel_report_for_professor(professor_evaluation_list, output_file_pat
         chart.add_data(data, titles_from_data=True)
         chart.set_categories(cats)
 
-        #config de layout
         fill = PatternFill(start_color="E6E6E6", end_color="E6E6E6", fill_type="solid")
         noyan_font = Font(name='Noyan Slim', size=12)
 
